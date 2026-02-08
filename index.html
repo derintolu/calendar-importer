@@ -1157,6 +1157,13 @@ async function initMsal() {
     msalInstance = new msal.PublicClientApplication(msalConfig);
     await msalInstance.initialize();
 
+    // If running inside a popup, just handle the response and stop
+    // This prevents the popup from trying to render the full app or open another popup
+    if (window.opener && window.opener !== window) {
+      await msalInstance.handleRedirectPromise();
+      return;
+    }
+
     // Handle redirect promise (for redirect flows, not used but good practice)
     const response = await msalInstance.handleRedirectPromise();
     if (response) {
