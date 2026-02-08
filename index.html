@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calendar Importer for Microsoft 365</title>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
 *, *::before, *::after {
@@ -1191,6 +1191,15 @@ async function signIn() {
   const btn = document.getElementById('signInBtn');
   const authError = document.getElementById('authError');
   authError.classList.add('hidden');
+
+  if (!msalInstance) {
+    await initMsal();
+    if (!msalInstance) {
+      document.getElementById('authErrorMsg').textContent = 'Failed to initialize authentication. Please refresh and try again.';
+      authError.classList.remove('hidden');
+      return;
+    }
+  }
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Signing in...';
