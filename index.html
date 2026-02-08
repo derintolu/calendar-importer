@@ -1,0 +1,1991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar Importer for Microsoft 365</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --blue-primary: #0078D4;
+  --blue-hover: #106EBE;
+  --blue-active: #005A9E;
+  --blue-light: #DEECF9;
+  --green: #107C10;
+  --green-light: #DFF6DD;
+  --red: #D13438;
+  --red-light: #FDE7E9;
+  --yellow: #FFB900;
+  --yellow-light: #FFF4CE;
+  --gray-10: #FAF9F8;
+  --gray-20: #F3F2F1;
+  --gray-30: #EDEBE9;
+  --gray-40: #D2D0CE;
+  --gray-60: #A19F9D;
+  --gray-80: #605E5C;
+  --gray-90: #3B3A39;
+  --gray-100: #323130;
+  --white: #FFFFFF;
+  --shadow-4: 0 1.6px 3.6px rgba(0,0,0,0.132), 0 0.3px 0.9px rgba(0,0,0,0.108);
+  --shadow-8: 0 3.2px 7.2px rgba(0,0,0,0.132), 0 0.6px 1.8px rgba(0,0,0,0.108);
+  --shadow-16: 0 6.4px 14.4px rgba(0,0,0,0.132), 0 1.2px 3.6px rgba(0,0,0,0.108);
+  --radius: 8px;
+  --radius-sm: 4px;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--gray-20);
+  color: var(--gray-100);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--gray-100);
+  margin-bottom: 4px;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.app-header p {
+  color: var(--gray-80);
+  font-size: 14px;
+}
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 8px;
+  min-height: 36px;
+}
+
+.user-info {
+  font-size: 13px;
+  color: var(--gray-80);
+}
+
+.user-info strong {
+  color: var(--gray-100);
+}
+
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-8);
+  width: 100%;
+  max-width: 720px;
+  padding: 32px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Stepper */
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32px;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  border: 2px solid var(--gray-40);
+  color: var(--gray-60);
+  background: var(--white);
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.step-indicator.active .step-number {
+  border-color: var(--blue-primary);
+  background: var(--blue-primary);
+  color: var(--white);
+}
+
+.step-indicator.completed .step-number {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--white);
+}
+
+.step-label {
+  font-size: 12px;
+  color: var(--gray-60);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.step-indicator.active .step-label {
+  color: var(--blue-primary);
+  font-weight: 600;
+}
+
+.step-indicator.completed .step-label {
+  color: var(--green);
+}
+
+.step-connector {
+  width: 24px;
+  height: 2px;
+  background: var(--gray-40);
+  margin: 0 4px;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+
+.step-connector.completed {
+  background: var(--green);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.1s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--blue-primary);
+  color: var(--white);
+  border-color: var(--blue-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--blue-hover);
+  border-color: var(--blue-hover);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--blue-active);
+  border-color: var(--blue-active);
+}
+
+.btn-outline {
+  background: var(--white);
+  color: var(--gray-100);
+  border-color: var(--gray-40);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--gray-10);
+  border-color: var(--gray-80);
+}
+
+.btn-danger {
+  background: var(--red);
+  color: var(--white);
+  border-color: var(--red);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #B10E12;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--blue-primary);
+  padding: 4px 8px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.btn-icon {
+  padding: 6px;
+  min-width: 32px;
+}
+
+/* Form Elements */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-100);
+  margin-bottom: 6px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--gray-80);
+  margin-top: 4px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--gray-40);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: var(--gray-100);
+  background: var(--white);
+  transition: border-color 0.1s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--blue-primary);
+  box-shadow: 0 0 0 1px var(--blue-primary);
+}
+
+.form-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--gray-40);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: var(--gray-100);
+  background: var(--white);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23605E5C' d='M6 8.825L1.175 4 2.238 2.938 6 6.7 9.763 2.937 10.825 4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--blue-primary);
+  box-shadow: 0 0 0 1px var(--blue-primary);
+}
+
+/* Input group */
+.input-group {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.input-group .form-input {
+  flex: 1;
+}
+
+/* Alerts */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.alert-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.alert-success {
+  background: var(--green-light);
+  color: #0B6A0B;
+  border: 1px solid #9AD89A;
+}
+
+.alert-error {
+  background: var(--red-light);
+  color: #A80000;
+  border: 1px solid #F1BBBC;
+}
+
+.alert-warning {
+  background: var(--yellow-light);
+  color: #835C00;
+  border: 1px solid #FFE7A0;
+}
+
+.alert-info {
+  background: var(--blue-light);
+  color: #004578;
+  border: 1px solid #A9D3F2;
+}
+
+/* Sign In */
+.sign-in-container {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.sign-in-container svg {
+  margin-bottom: 24px;
+}
+
+.sign-in-container h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.sign-in-container p {
+  color: var(--gray-80);
+  font-size: 14px;
+  margin-bottom: 32px;
+}
+
+.ms-sign-in-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: var(--white);
+  border: 1px solid var(--gray-40);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gray-90);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  box-shadow: var(--shadow-4);
+}
+
+.ms-sign-in-btn:hover {
+  background: var(--gray-10);
+  box-shadow: var(--shadow-8);
+}
+
+.ms-sign-in-btn svg {
+  margin: 0;
+  width: 21px;
+  height: 21px;
+}
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed var(--gray-40);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--gray-10);
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+  border-color: var(--blue-primary);
+  background: var(--blue-light);
+}
+
+.drop-zone svg {
+  margin-bottom: 12px;
+  color: var(--gray-60);
+}
+
+.drop-zone p {
+  color: var(--gray-80);
+  font-size: 14px;
+}
+
+.drop-zone .drop-hint {
+  font-size: 12px;
+  color: var(--gray-60);
+  margin-top: 4px;
+}
+
+.file-selected {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--green-light);
+  border-radius: var(--radius-sm);
+  margin-top: 12px;
+  font-size: 14px;
+  color: #0B6A0B;
+}
+
+.file-selected .file-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.file-selected .file-meta {
+  font-size: 12px;
+  color: #107C10;
+}
+
+/* Preview table */
+.preview-table-wrap {
+  overflow-x: auto;
+  margin: 16px 0;
+  border: 1px solid var(--gray-30);
+  border-radius: var(--radius-sm);
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.preview-table th {
+  background: var(--gray-20);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--gray-90);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--gray-30);
+}
+
+.preview-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gray-30);
+  color: var(--gray-100);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-table tr:last-child td {
+  border-bottom: none;
+}
+
+.preview-table tr:hover td {
+  background: var(--gray-10);
+}
+
+/* Mapping grid */
+.mapping-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.mapping-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mapping-item label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-90);
+}
+
+.mapping-item .required {
+  color: var(--red);
+}
+
+/* Progress */
+.progress-container {
+  margin: 24px 0;
+}
+
+.progress-bar-wrap {
+  height: 8px;
+  background: var(--gray-30);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--blue-primary);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.progress-bar.complete {
+  background: var(--green);
+}
+
+.progress-bar.has-errors {
+  background: var(--yellow);
+}
+
+.progress-text {
+  font-size: 13px;
+  color: var(--gray-80);
+  text-align: center;
+}
+
+/* Results */
+.results-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.result-stat {
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.result-stat .stat-number {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.result-stat .stat-label {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.result-stat.success {
+  background: var(--green-light);
+  color: #0B6A0B;
+}
+
+.result-stat.error {
+  background: var(--red-light);
+  color: #A80000;
+}
+
+.error-list {
+  max-height: 240px;
+  overflow-y: auto;
+  margin-top: 16px;
+  border: 1px solid var(--gray-30);
+  border-radius: var(--radius-sm);
+}
+
+.error-list-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gray-30);
+  font-size: 13px;
+  align-items: flex-start;
+}
+
+.error-list-item:last-child {
+  border-bottom: none;
+}
+
+.error-row-num {
+  font-weight: 600;
+  color: var(--red);
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+.error-message {
+  color: var(--gray-80);
+}
+
+/* Recent addresses */
+.recent-addresses {
+  margin-top: 12px;
+}
+
+.recent-addresses-title {
+  font-size: 12px;
+  color: var(--gray-60);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--gray-20);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--gray-90);
+  cursor: pointer;
+  border: 1px solid var(--gray-30);
+  transition: all 0.1s ease;
+}
+
+.recent-chip:hover {
+  background: var(--blue-light);
+  border-color: var(--blue-primary);
+  color: var(--blue-primary);
+}
+
+.recent-chip .remove-chip {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 10px;
+  color: var(--gray-60);
+  margin-left: 2px;
+}
+
+.recent-chip .remove-chip:hover {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+/* Validation status */
+.validation-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.validation-status.valid {
+  color: var(--green);
+}
+
+.validation-status.invalid {
+  color: var(--red);
+}
+
+.validation-status.checking {
+  color: var(--gray-80);
+}
+
+/* Section heading */
+.section-heading {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gray-100);
+  margin-bottom: 4px;
+}
+
+.section-desc {
+  font-size: 14px;
+  color: var(--gray-80);
+  margin-bottom: 20px;
+}
+
+/* Actions bar */
+.actions-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--gray-30);
+  gap: 12px;
+}
+
+.actions-bar .btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Template link */
+.template-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--gray-40);
+  border-top-color: var(--blue-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-lg {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  body {
+    padding: 12px 8px;
+  }
+
+  .card {
+    padding: 20px 16px;
+  }
+
+  .stepper {
+    gap: 0;
+  }
+
+  .step-label {
+    display: none;
+  }
+
+  .step-connector {
+    width: 16px;
+  }
+
+  .mapping-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .actions-bar {
+    flex-direction: column;
+  }
+
+  .actions-bar .btn-group {
+    width: 100%;
+  }
+
+  .actions-bar .btn {
+    flex: 1;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .sign-in-container {
+    padding: 32px 16px;
+  }
+
+  .input-group {
+    flex-direction: column;
+  }
+}
+
+/* Utility */
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="user-bar" id="userBar">
+  <span class="user-info" id="userInfo"></span>
+  <button class="btn btn-outline btn-sm hidden" id="signOutBtn" onclick="signOut()">Sign Out</button>
+</div>
+
+<div class="app-header">
+  <h1>Calendar Importer</h1>
+  <p>Bulk-import events into Microsoft 365 shared mailboxes via CSV</p>
+</div>
+
+<div class="card">
+  <!-- Stepper -->
+  <div class="stepper" id="stepper">
+    <div class="step-indicator active" data-step="1">
+      <span class="step-number">1</span>
+      <span class="step-label">Sign In</span>
+    </div>
+    <div class="step-connector" data-connector="1"></div>
+    <div class="step-indicator" data-step="2">
+      <span class="step-number">2</span>
+      <span class="step-label">Mailbox</span>
+    </div>
+    <div class="step-connector" data-connector="2"></div>
+    <div class="step-indicator" data-step="3">
+      <span class="step-number">3</span>
+      <span class="step-label">Upload</span>
+    </div>
+    <div class="step-connector" data-connector="3"></div>
+    <div class="step-indicator" data-step="4">
+      <span class="step-number">4</span>
+      <span class="step-label">Map</span>
+    </div>
+    <div class="step-connector" data-connector="4"></div>
+    <div class="step-indicator" data-step="5">
+      <span class="step-number">5</span>
+      <span class="step-label">Preview</span>
+    </div>
+    <div class="step-connector" data-connector="5"></div>
+    <div class="step-indicator" data-step="6">
+      <span class="step-number">6</span>
+      <span class="step-label">Import</span>
+    </div>
+  </div>
+
+  <!-- Step 1: Sign In -->
+  <div class="step-content" id="step1">
+    <div class="sign-in-container">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+        <rect width="64" height="64" rx="12" fill="#0078D4" fill-opacity="0.1"/>
+        <path d="M20 16h10v10H20V16z" fill="#F25022"/>
+        <path d="M34 16h10v10H34V16z" fill="#7FBA00"/>
+        <path d="M20 30h10v10H20V30z" fill="#00A4EF"/>
+        <path d="M34 30h10v10H34V30z" fill="#FFB900"/>
+        <path d="M18 44h28v4H18z" fill="#0078D4" fill-opacity="0.3" rx="2"/>
+      </svg>
+      <h2>Connect to Microsoft 365</h2>
+      <p>Sign in with your Microsoft account to import calendar events into shared mailboxes.</p>
+      <button class="ms-sign-in-btn" onclick="signIn()" id="signInBtn">
+        <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+          <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+          <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+          <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+        </svg>
+        Sign in with Microsoft
+      </button>
+      <div id="authError" class="alert alert-error mt-16 hidden" style="text-align:left;">
+        <span class="alert-icon">&#9888;</span>
+        <span id="authErrorMsg"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Select Mailbox -->
+  <div class="step-content hidden" id="step2">
+    <h2 class="section-heading">Select Shared Mailbox</h2>
+    <p class="section-desc">Enter the email address of the shared mailbox where events will be created.</p>
+
+    <div class="form-group">
+      <label class="form-label" for="mailboxInput">Shared Mailbox Email</label>
+      <div class="input-group">
+        <input type="email" class="form-input" id="mailboxInput" placeholder="room@contoso.com"
+               onkeydown="if(event.key==='Enter'){validateMailbox();}">
+        <button class="btn btn-primary" onclick="validateMailbox()" id="validateBtn">Validate</button>
+      </div>
+      <div id="validationStatus" class="validation-status hidden"></div>
+    </div>
+
+    <div id="recentAddresses" class="recent-addresses hidden">
+      <div class="recent-addresses-title">Recently Used</div>
+      <div class="recent-list" id="recentList"></div>
+    </div>
+
+    <div class="actions-bar">
+      <button class="btn btn-outline" onclick="goToStep(1)">Back</button>
+      <button class="btn btn-primary" onclick="goToStep(3)" id="mailboxNextBtn" disabled>Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Upload CSV -->
+  <div class="step-content hidden" id="step3">
+    <h2 class="section-heading">Upload CSV File</h2>
+    <p class="section-desc">Upload a CSV file containing your calendar events.</p>
+
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <path d="M24 8L16 18H21V28H27V18H32L24 8Z" fill="currentColor"/>
+        <path d="M38 32H10V38H38V32Z" fill="currentColor" opacity="0.3"/>
+      </svg>
+      <p>Drag and drop your CSV file here</p>
+      <p class="drop-hint">or click to browse</p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv,.txt" class="hidden" onchange="handleFileSelect(event)">
+    <div id="fileInfo" class="file-selected hidden">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M10 2a8 8 0 110 16 8 8 0 010-16zm-1.5 11.5l6-6-1-1-5 5-2.5-2.5-1 1 3.5 3.5z"/>
+      </svg>
+      <span class="file-name" id="fileName"></span>
+      <span class="file-meta" id="fileMeta"></span>
+      <button class="btn-link btn-sm" onclick="clearFile()" style="color: #A80000;">Remove</button>
+    </div>
+
+    <div id="csvError" class="alert alert-error mt-16 hidden">
+      <span class="alert-icon">&#9888;</span>
+      <span id="csvErrorMsg"></span>
+    </div>
+
+    <div class="template-link">
+      <button class="btn-link" onclick="downloadTemplate()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" style="vertical-align: -2px;">
+          <path d="M7 0v9.5M3 6l4 4 4-4M1 12h12v1.5H1z"/>
+        </svg>
+        Download CSV template
+      </button>
+    </div>
+
+    <div class="actions-bar">
+      <button class="btn btn-outline" onclick="goToStep(2)">Back</button>
+      <button class="btn btn-primary" onclick="goToStep(4)" id="uploadNextBtn" disabled>Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Map Columns -->
+  <div class="step-content hidden" id="step4">
+    <h2 class="section-heading">Map Columns</h2>
+    <p class="section-desc">Match your CSV columns to calendar event fields. We've auto-detected what we can.</p>
+
+    <div class="form-group">
+      <label class="form-label" for="timezoneSelect">Timezone</label>
+      <select class="form-select" id="timezoneSelect" style="max-width: 320px;"></select>
+    </div>
+
+    <div class="mapping-grid" id="mappingGrid"></div>
+
+    <div id="mappingError" class="alert alert-error mt-16 hidden">
+      <span class="alert-icon">&#9888;</span>
+      <span id="mappingErrorMsg"></span>
+    </div>
+
+    <div class="actions-bar">
+      <button class="btn btn-outline" onclick="goToStep(3)">Back</button>
+      <button class="btn btn-primary" onclick="goToStep(5)" id="mapNextBtn">Preview</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Preview -->
+  <div class="step-content hidden" id="step5">
+    <h2 class="section-heading">Preview Events</h2>
+    <p class="section-desc" id="previewDesc">Showing the first 5 events. Review before importing.</p>
+
+    <div class="preview-table-wrap">
+      <table class="preview-table" id="previewTable">
+        <thead id="previewHead"></thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+
+    <div id="previewWarning" class="alert alert-warning mt-16 hidden">
+      <span class="alert-icon">&#9888;</span>
+      <span id="previewWarningMsg"></span>
+    </div>
+
+    <div class="actions-bar">
+      <button class="btn btn-outline" onclick="goToStep(4)">Back</button>
+      <button class="btn btn-primary" onclick="goToStep(6)">
+        Import <span id="importCount"></span> Events
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 6: Import -->
+  <div class="step-content hidden" id="step6">
+    <div id="importInProgress">
+      <h2 class="section-heading">Importing Events</h2>
+      <p class="section-desc" id="importStatusText">Starting import...</p>
+      <div class="progress-container">
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="progress-text" id="progressText">0 / 0</div>
+      </div>
+    </div>
+
+    <div id="importComplete" class="hidden">
+      <h2 class="section-heading text-center">Import Complete</h2>
+
+      <div class="results-summary" id="resultsSummary"></div>
+
+      <div id="errorListContainer" class="hidden">
+        <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Failed Events</h3>
+        <div class="error-list" id="errorList"></div>
+      </div>
+
+      <div class="actions-bar" style="justify-content: center;">
+        <button class="btn btn-primary" onclick="resetApp()">New Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Configuration
+// ============================================================
+
+const msalConfig = {
+  auth: {
+    clientId: '2207adac-d00f-4d19-a596-c022bbc347d9',
+    authority: 'https://login.microsoftonline.com/6981c260-5d3c-4a97-abd9-c2860da376e3',
+    redirectUri: window.location.origin + window.location.pathname,
+  },
+  cache: {
+    cacheLocation: 'localStorage',
+    storeAuthStateInCookie: true,
+  },
+};
+
+const loginRequest = {
+  scopes: ['Calendars.ReadWrite.Shared', 'User.Read'],
+};
+
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const STORAGE_KEY_RECENT = 'cal-importer-recent-mailboxes';
+const REQUEST_DELAY_MS = 200;
+
+// ============================================================
+// Timezones
+// ============================================================
+
+const TIMEZONES = [
+  'America/Los_Angeles',
+  'America/Denver',
+  'America/Chicago',
+  'America/New_York',
+  'America/Phoenix',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'America/Toronto',
+  'America/Vancouver',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Asia/Shanghai',
+  'Asia/Kolkata',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+  'UTC',
+];
+
+// ============================================================
+// State
+// ============================================================
+
+let msalInstance = null;
+let accessToken = null;
+let currentStep = 1;
+let validatedMailbox = null;
+let parsedCSV = null;
+let columnMapping = {};
+let importResults = { success: 0, errors: [] };
+
+// Field definitions for mapping
+const FIELDS = [
+  { key: 'subject', label: 'Subject', required: true, aliases: ['subject', 'title', 'event', 'name', 'event name', 'event title', 'summary'] },
+  { key: 'startDate', label: 'Start Date', required: true, aliases: ['start date', 'startdate', 'start_date', 'date', 'event date', 'begin date', 'from date', 'start'] },
+  { key: 'startTime', label: 'Start Time', required: false, aliases: ['start time', 'starttime', 'start_time', 'time', 'begin time', 'from time', 'begin'] },
+  { key: 'endDate', label: 'End Date', required: false, aliases: ['end date', 'enddate', 'end_date', 'to date', 'finish date'] },
+  { key: 'endTime', label: 'End Time', required: false, aliases: ['end time', 'endtime', 'end_time', 'to time', 'finish time', 'end'] },
+  { key: 'location', label: 'Location', required: false, aliases: ['location', 'place', 'venue', 'room', 'where', 'address'] },
+  { key: 'description', label: 'Description', required: false, aliases: ['description', 'body', 'notes', 'details', 'content', 'memo', 'comments', 'note'] },
+  { key: 'allDay', label: 'All Day', required: false, aliases: ['all day', 'allday', 'all_day', 'is all day', 'isallday', 'whole day', 'full day'] },
+];
+
+// ============================================================
+// MSAL Initialization
+// ============================================================
+
+async function initMsal() {
+  try {
+    msalInstance = new msal.PublicClientApplication(msalConfig);
+    await msalInstance.initialize();
+
+    // Handle redirect promise (for redirect flows, not used but good practice)
+    const response = await msalInstance.handleRedirectPromise();
+    if (response) {
+      accessToken = response.accessToken;
+      await onAuthSuccess(response.account);
+    } else {
+      // Check for existing accounts
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        try {
+          const silentResult = await msalInstance.acquireTokenSilent({
+            ...loginRequest,
+            account: accounts[0],
+          });
+          accessToken = silentResult.accessToken;
+          await onAuthSuccess(accounts[0]);
+        } catch {
+          // Silent acquisition failed, user must sign in again
+        }
+      }
+    }
+  } catch (err) {
+    console.error('MSAL init error:', err);
+  }
+}
+
+// ============================================================
+// Auth Functions
+// ============================================================
+
+async function signIn() {
+  const btn = document.getElementById('signInBtn');
+  const authError = document.getElementById('authError');
+  authError.classList.add('hidden');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Signing in...';
+
+  try {
+    const result = await msalInstance.loginPopup(loginRequest);
+    accessToken = result.accessToken;
+    await onAuthSuccess(result.account);
+  } catch (err) {
+    console.error('Auth error:', err);
+    const msg = err.errorMessage || err.message || 'Authentication failed. Please try again.';
+    document.getElementById('authErrorMsg').textContent = msg;
+    authError.classList.remove('hidden');
+    btn.disabled = false;
+    btn.innerHTML = `
+      <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" width="21" height="21">
+        <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+        <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+        <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+        <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+      </svg>
+      Sign in with Microsoft
+    `;
+  }
+}
+
+async function onAuthSuccess(account) {
+  const name = account.name || account.username;
+  const email = account.username;
+  document.getElementById('userInfo').innerHTML = `Signed in as <strong>${escapeHtml(name)}</strong> (${escapeHtml(email)})`;
+  document.getElementById('signOutBtn').classList.remove('hidden');
+  goToStep(2);
+}
+
+async function signOut() {
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      await msalInstance.logoutPopup({ account: accounts[0] });
+    }
+  } catch {
+    // Ignore logout errors
+  }
+  accessToken = null;
+  validatedMailbox = null;
+  parsedCSV = null;
+  columnMapping = {};
+  document.getElementById('userInfo').innerHTML = '';
+  document.getElementById('signOutBtn').classList.add('hidden');
+  goToStep(1);
+}
+
+async function getToken() {
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) {
+    throw new Error('No authenticated account. Please sign in again.');
+  }
+  try {
+    const result = await msalInstance.acquireTokenSilent({
+      ...loginRequest,
+      account: accounts[0],
+    });
+    accessToken = result.accessToken;
+    return accessToken;
+  } catch {
+    // Fallback to popup
+    const result = await msalInstance.acquireTokenPopup(loginRequest);
+    accessToken = result.accessToken;
+    return accessToken;
+  }
+}
+
+// ============================================================
+// Graph API Helpers
+// ============================================================
+
+async function graphRequest(url, options = {}) {
+  const token = await getToken();
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
+    await sleep(retryAfter * 1000);
+    return graphRequest(url, options);
+  }
+
+  return response;
+}
+
+// ============================================================
+// Step Navigation
+// ============================================================
+
+function goToStep(step) {
+  // Hide all steps
+  document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+
+  // Show target step
+  document.getElementById(`step${step}`).classList.remove('hidden');
+
+  // Update stepper
+  document.querySelectorAll('.step-indicator').forEach(el => {
+    const s = parseInt(el.getAttribute('data-step'));
+    el.classList.remove('active', 'completed');
+    if (s === step) el.classList.add('active');
+    else if (s < step) el.classList.add('completed');
+  });
+
+  document.querySelectorAll('.step-connector').forEach(el => {
+    const c = parseInt(el.getAttribute('data-connector'));
+    el.classList.toggle('completed', c < step);
+  });
+
+  currentStep = step;
+
+  // Step-specific initialization
+  if (step === 2) initMailboxStep();
+  if (step === 4) initMappingStep();
+  if (step === 5) initPreviewStep();
+  if (step === 6) startImport();
+}
+
+// ============================================================
+// Step 2: Mailbox
+// ============================================================
+
+function initMailboxStep() {
+  renderRecentAddresses();
+  // Reset validation if mailbox input changed
+  const input = document.getElementById('mailboxInput');
+  if (validatedMailbox && input.value !== validatedMailbox) {
+    validatedMailbox = null;
+    document.getElementById('mailboxNextBtn').disabled = true;
+    document.getElementById('validationStatus').classList.add('hidden');
+  }
+}
+
+function renderRecentAddresses() {
+  const addresses = getRecentAddresses();
+  const container = document.getElementById('recentAddresses');
+  const list = document.getElementById('recentList');
+
+  if (addresses.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+  list.innerHTML = addresses.map(addr => `
+    <span class="recent-chip" onclick="selectRecentAddress('${escapeHtml(addr)}')">
+      ${escapeHtml(addr)}
+      <span class="remove-chip" onclick="event.stopPropagation(); removeRecentAddress('${escapeHtml(addr)}')" title="Remove">&times;</span>
+    </span>
+  `).join('');
+}
+
+function getRecentAddresses() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY_RECENT) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentAddress(addr) {
+  let addresses = getRecentAddresses();
+  addresses = addresses.filter(a => a.toLowerCase() !== addr.toLowerCase());
+  addresses.unshift(addr);
+  addresses = addresses.slice(0, 5); // Keep last 5
+  localStorage.setItem(STORAGE_KEY_RECENT, JSON.stringify(addresses));
+}
+
+function removeRecentAddress(addr) {
+  let addresses = getRecentAddresses();
+  addresses = addresses.filter(a => a.toLowerCase() !== addr.toLowerCase());
+  localStorage.setItem(STORAGE_KEY_RECENT, JSON.stringify(addresses));
+  renderRecentAddresses();
+}
+
+function selectRecentAddress(addr) {
+  document.getElementById('mailboxInput').value = addr;
+  validateMailbox();
+}
+
+async function validateMailbox() {
+  const input = document.getElementById('mailboxInput');
+  const email = input.value.trim();
+  const status = document.getElementById('validationStatus');
+  const nextBtn = document.getElementById('mailboxNextBtn');
+
+  if (!email) {
+    status.classList.add('hidden');
+    return;
+  }
+
+  status.classList.remove('hidden');
+  status.className = 'validation-status checking';
+  status.innerHTML = '<span class="spinner"></span> Validating mailbox...';
+  nextBtn.disabled = true;
+
+  try {
+    const response = await graphRequest(`${GRAPH_BASE}/users/${encodeURIComponent(email)}/calendar`);
+
+    if (response.ok) {
+      status.className = 'validation-status valid';
+      status.innerHTML = '&#10004; Mailbox validated successfully';
+      validatedMailbox = email;
+      nextBtn.disabled = false;
+      saveRecentAddress(email);
+      renderRecentAddresses();
+    } else {
+      const data = await response.json().catch(() => null);
+      const errMsg = data?.error?.message || 'Access denied or mailbox not found';
+      status.className = 'validation-status invalid';
+      status.innerHTML = `&#10008; ${escapeHtml(errMsg)}`;
+      validatedMailbox = null;
+    }
+  } catch (err) {
+    status.className = 'validation-status invalid';
+    status.innerHTML = `&#10008; ${escapeHtml(err.message || 'Validation failed')}`;
+    validatedMailbox = null;
+  }
+}
+
+// ============================================================
+// Step 3: Upload CSV
+// ============================================================
+
+(function initDropZone() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('dropZone');
+    if (!zone) return;
+
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('drag-over');
+    });
+
+    zone.addEventListener('dragleave', () => {
+      zone.classList.remove('drag-over');
+    });
+
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) processFile(file);
+    });
+  });
+})();
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  const errorEl = document.getElementById('csvError');
+  errorEl.classList.add('hidden');
+
+  if (!file.name.match(/\.(csv|txt)$/i)) {
+    document.getElementById('csvErrorMsg').textContent = 'Please upload a CSV file.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    complete: (results) => {
+      if (results.errors.length > 0 && results.data.length === 0) {
+        document.getElementById('csvErrorMsg').textContent =
+          `CSV parse error: ${results.errors[0].message}`;
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      if (results.data.length === 0) {
+        document.getElementById('csvErrorMsg').textContent = 'The CSV file contains no data rows.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      parsedCSV = results;
+
+      // Show file info
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileMeta').textContent =
+        `${results.data.length} rows, ${results.meta.fields.length} columns`;
+      document.getElementById('fileInfo').classList.remove('hidden');
+      document.getElementById('dropZone').classList.add('hidden');
+      document.getElementById('uploadNextBtn').disabled = false;
+
+      // Show parse warnings if any
+      if (results.errors.length > 0) {
+        document.getElementById('csvErrorMsg').textContent =
+          `Parsed with ${results.errors.length} warning(s). Some rows may be skipped.`;
+        errorEl.classList.remove('hidden');
+        errorEl.className = 'alert alert-warning mt-16';
+      }
+    },
+    error: (err) => {
+      document.getElementById('csvErrorMsg').textContent = `Failed to read file: ${err.message}`;
+      errorEl.classList.remove('hidden');
+    },
+  });
+}
+
+function clearFile() {
+  parsedCSV = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileInfo').classList.add('hidden');
+  document.getElementById('dropZone').classList.remove('hidden');
+  document.getElementById('uploadNextBtn').disabled = true;
+  document.getElementById('csvError').classList.add('hidden');
+}
+
+function downloadTemplate() {
+  const template = [
+    ['Subject', 'Start Date', 'Start Time', 'End Date', 'End Time', 'Location', 'Description', 'All Day'],
+    ['Team Standup', '2025-03-15', '09:00', '2025-03-15', '09:30', 'Conference Room A', 'Daily standup meeting', 'false'],
+    ['Company Holiday', '2025-03-17', '', '2025-03-17', '', '', 'St. Patrick\'s Day - Office Closed', 'true'],
+  ];
+
+  const csv = template.map(row => row.map(cell => {
+    if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+      return `"${cell.replace(/"/g, '""')}"`;
+    }
+    return cell;
+  }).join(',')).join('\r\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'calendar-import-template.csv';
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// ============================================================
+// Step 4: Column Mapping
+// ============================================================
+
+function initMappingStep() {
+  const grid = document.getElementById('mappingGrid');
+  const csvHeaders = parsedCSV.meta.fields;
+
+  // Populate timezone dropdown
+  const tzSelect = document.getElementById('timezoneSelect');
+  if (tzSelect.options.length === 0) {
+    TIMEZONES.forEach(tz => {
+      const opt = document.createElement('option');
+      opt.value = tz;
+      opt.textContent = tz.replace(/_/g, ' ');
+      if (tz === 'America/Los_Angeles') opt.selected = true;
+      tzSelect.appendChild(opt);
+    });
+  }
+
+  grid.innerHTML = '';
+
+  FIELDS.forEach(field => {
+    const div = document.createElement('div');
+    div.className = 'mapping-item';
+
+    const label = document.createElement('label');
+    label.setAttribute('for', `map-${field.key}`);
+    label.innerHTML = `${field.label}${field.required ? ' <span class="required">*</span>' : ''}`;
+
+    const select = document.createElement('select');
+    select.className = 'form-select';
+    select.id = `map-${field.key}`;
+
+    // Add empty option
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = field.required ? '-- Select column --' : '(none)';
+    select.appendChild(emptyOpt);
+
+    // Add CSV columns
+    csvHeaders.forEach(header => {
+      const opt = document.createElement('option');
+      opt.value = header;
+      opt.textContent = header;
+      select.appendChild(opt);
+    });
+
+    // Auto-detect best match
+    const match = autoDetectColumn(field, csvHeaders);
+    if (match) select.value = match;
+
+    div.appendChild(label);
+    div.appendChild(select);
+    grid.appendChild(div);
+  });
+}
+
+function autoDetectColumn(field, headers) {
+  // Exact match first (case-insensitive)
+  for (const header of headers) {
+    const h = header.toLowerCase().trim();
+    if (field.aliases.includes(h)) return header;
+  }
+
+  // Partial match
+  for (const header of headers) {
+    const h = header.toLowerCase().trim();
+    for (const alias of field.aliases) {
+      if (h.includes(alias) || alias.includes(h)) return header;
+    }
+  }
+
+  return null;
+}
+
+function getMappings() {
+  const mapping = {};
+  FIELDS.forEach(field => {
+    const select = document.getElementById(`map-${field.key}`);
+    if (select && select.value) {
+      mapping[field.key] = select.value;
+    }
+  });
+  return mapping;
+}
+
+function validateMappings() {
+  const mapping = getMappings();
+  const missing = FIELDS.filter(f => f.required && !mapping[f.key]);
+
+  if (missing.length > 0) {
+    const names = missing.map(f => f.label).join(', ');
+    document.getElementById('mappingErrorMsg').textContent = `Please map required fields: ${names}`;
+    document.getElementById('mappingError').classList.remove('hidden');
+    return false;
+  }
+
+  document.getElementById('mappingError').classList.add('hidden');
+  columnMapping = mapping;
+  return true;
+}
+
+// Override goToStep to add validation
+const _goToStep = goToStep;
+goToStep = function (step) {
+  // Validate mapping before going to preview
+  if (currentStep === 4 && step === 5) {
+    if (!validateMappings()) return;
+  }
+  _goToStep(step);
+};
+
+// ============================================================
+// Step 5: Preview
+// ============================================================
+
+function initPreviewStep() {
+  const mapping = columnMapping;
+  const data = parsedCSV.data;
+  const previewRows = data.slice(0, 5);
+  const tz = document.getElementById('timezoneSelect').value;
+
+  const totalCount = data.length;
+  document.getElementById('previewDesc').textContent =
+    `Showing ${Math.min(5, totalCount)} of ${totalCount} events. Timezone: ${tz.replace(/_/g, ' ')}`;
+  document.getElementById('importCount').textContent = totalCount;
+
+  // Build preview table
+  const fieldKeys = FIELDS.filter(f => mapping[f.key]);
+  const thead = document.getElementById('previewHead');
+  const tbody = document.getElementById('previewBody');
+
+  thead.innerHTML = '<tr>' + fieldKeys.map(f =>
+    `<th>${escapeHtml(f.label)}</th>`
+  ).join('') + '</tr>';
+
+  tbody.innerHTML = previewRows.map(row =>
+    '<tr>' + fieldKeys.map(f =>
+      `<td title="${escapeHtml(row[mapping[f.key]] || '')}">${escapeHtml(row[mapping[f.key]] || '')}</td>`
+    ).join('') + '</tr>'
+  ).join('');
+
+  // Warnings
+  const warnings = [];
+  if (!mapping.endDate && !mapping.endTime) {
+    warnings.push('No end date/time mapped. Events will default to 1 hour duration (or all-day if All Day is set).');
+  }
+
+  const warningEl = document.getElementById('previewWarning');
+  if (warnings.length > 0) {
+    document.getElementById('previewWarningMsg').textContent = warnings.join(' ');
+    warningEl.classList.remove('hidden');
+  } else {
+    warningEl.classList.add('hidden');
+  }
+}
+
+// ============================================================
+// Step 6: Import
+// ============================================================
+
+async function startImport() {
+  const data = parsedCSV.data;
+  const mapping = columnMapping;
+  const tz = document.getElementById('timezoneSelect').value;
+  const total = data.length;
+
+  importResults = { success: 0, errors: [] };
+
+  document.getElementById('importInProgress').classList.remove('hidden');
+  document.getElementById('importComplete').classList.add('hidden');
+
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const statusText = document.getElementById('importStatusText');
+
+  progressBar.style.width = '0%';
+  progressBar.className = 'progress-bar';
+
+  for (let i = 0; i < total; i++) {
+    const row = data[i];
+    const rowNum = i + 2; // 1-indexed + header row
+
+    statusText.textContent = `Creating event ${i + 1} of ${total}...`;
+    progressText.textContent = `${i + 1} / ${total}`;
+    progressBar.style.width = `${((i + 1) / total) * 100}%`;
+
+    try {
+      const event = buildEvent(row, mapping, tz);
+      const response = await graphRequest(
+        `${GRAPH_BASE}/users/${encodeURIComponent(validatedMailbox)}/events`,
+        {
+          method: 'POST',
+          body: JSON.stringify(event),
+        }
+      );
+
+      if (response.ok) {
+        importResults.success++;
+      } else {
+        const errData = await response.json().catch(() => null);
+        const errMsg = errData?.error?.message || `HTTP ${response.status}`;
+        importResults.errors.push({ row: rowNum, subject: row[mapping.subject] || '', message: errMsg });
+      }
+    } catch (err) {
+      importResults.errors.push({ row: rowNum, subject: row[mapping.subject] || '', message: err.message });
+    }
+
+    // Throttle
+    if (i < total - 1) {
+      await sleep(REQUEST_DELAY_MS);
+    }
+  }
+
+  // Update progress bar final state
+  if (importResults.errors.length > 0 && importResults.success > 0) {
+    progressBar.classList.add('has-errors');
+  } else if (importResults.errors.length === 0) {
+    progressBar.classList.add('complete');
+  }
+
+  showResults();
+}
+
+function buildEvent(row, mapping, tz) {
+  const subject = (row[mapping.subject] || '').trim();
+
+  const allDayRaw = mapping.allDay ? (row[mapping.allDay] || '').trim().toLowerCase() : '';
+  const isAllDay = ['true', 'yes', '1', 'y', 'x'].includes(allDayRaw);
+
+  const startDateStr = (row[mapping.startDate] || '').trim();
+  const startTimeStr = mapping.startTime ? (row[mapping.startTime] || '').trim() : '';
+  const endDateStr = mapping.endDate ? (row[mapping.endDate] || '').trim() : '';
+  const endTimeStr = mapping.endTime ? (row[mapping.endTime] || '').trim() : '';
+
+  let startDateTime, endDateTime;
+
+  if (isAllDay) {
+    // All-day events: date only, no time
+    const startDate = parseDate(startDateStr);
+    const endDate = endDateStr ? parseDate(endDateStr) : startDate;
+
+    // For all-day events, end date should be the day AFTER (MS Graph exclusive end)
+    const endNext = new Date(endDate);
+    endNext.setDate(endNext.getDate() + 1);
+
+    startDateTime = formatDateOnly(startDate);
+    endDateTime = formatDateOnly(endNext);
+  } else {
+    // Timed events
+    const startDate = parseDate(startDateStr);
+    const startTime = startTimeStr ? parseTime(startTimeStr) : { hours: 9, minutes: 0 };
+
+    startDateTime = formatDateTime(startDate, startTime);
+
+    if (endDateStr || endTimeStr) {
+      const endDate = endDateStr ? parseDate(endDateStr) : startDate;
+      const endTime = endTimeStr ? parseTime(endTimeStr) : startTime;
+      endDateTime = formatDateTime(endDate, endTime);
+    } else {
+      // Default: 1 hour after start
+      const end = new Date(startDate);
+      end.setHours(startTime.hours + 1, startTime.minutes);
+      endDateTime = formatDateTime(end, { hours: end.getHours(), minutes: end.getMinutes() });
+    }
+  }
+
+  const event = {
+    subject: subject,
+    start: {
+      dateTime: startDateTime,
+      timeZone: tz,
+    },
+    end: {
+      dateTime: endDateTime,
+      timeZone: tz,
+    },
+    isAllDay: isAllDay,
+  };
+
+  // Optional fields
+  if (mapping.description && row[mapping.description]) {
+    event.body = {
+      contentType: 'text',
+      content: row[mapping.description].trim(),
+    };
+  }
+
+  if (mapping.location && row[mapping.location]) {
+    event.location = {
+      displayName: row[mapping.location].trim(),
+    };
+  }
+
+  return event;
+}
+
+function parseDate(str) {
+  if (!str) return new Date();
+
+  // Try ISO format first (YYYY-MM-DD)
+  const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+  }
+
+  // US format (M/D/YYYY or MM/DD/YYYY)
+  const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (usMatch) {
+    let year = parseInt(usMatch[3]);
+    if (year < 100) year += 2000;
+    return new Date(year, parseInt(usMatch[1]) - 1, parseInt(usMatch[2]));
+  }
+
+  // Fallback to Date constructor
+  const d = new Date(str);
+  if (isNaN(d.getTime())) {
+    throw new Error(`Cannot parse date: "${str}"`);
+  }
+  return d;
+}
+
+function parseTime(str) {
+  if (!str) return { hours: 0, minutes: 0 };
+
+  // Handle 12-hour format (e.g. "2:30 PM", "2:30PM")
+  const ampmMatch = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/i);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1]);
+    const minutes = parseInt(ampmMatch[2]);
+    const ampm = ampmMatch[3].toUpperCase();
+    if (ampm === 'PM' && hours !== 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+    return { hours, minutes };
+  }
+
+  // 24-hour format (e.g. "14:30", "9:00")
+  const militaryMatch = str.match(/^(\d{1,2}):(\d{2})$/);
+  if (militaryMatch) {
+    return { hours: parseInt(militaryMatch[1]), minutes: parseInt(militaryMatch[2]) };
+  }
+
+  // Hour only (e.g. "9", "14")
+  const hourMatch = str.match(/^(\d{1,2})$/);
+  if (hourMatch) {
+    return { hours: parseInt(hourMatch[1]), minutes: 0 };
+  }
+
+  throw new Error(`Cannot parse time: "${str}"`);
+}
+
+function formatDateTime(date, time) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(time.hours).padStart(2, '0');
+  const min = String(time.minutes).padStart(2, '0');
+  return `${y}-${m}-${d}T${h}:${min}:00`;
+}
+
+function formatDateOnly(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}T00:00:00`;
+}
+
+// ============================================================
+// Results
+// ============================================================
+
+function showResults() {
+  document.getElementById('importInProgress').classList.add('hidden');
+  document.getElementById('importComplete').classList.remove('hidden');
+
+  const summary = document.getElementById('resultsSummary');
+  summary.innerHTML = `
+    <div class="result-stat success">
+      <div class="stat-number">${importResults.success}</div>
+      <div class="stat-label">Events Created</div>
+    </div>
+    <div class="result-stat error">
+      <div class="stat-number">${importResults.errors.length}</div>
+      <div class="stat-label">Failed</div>
+    </div>
+  `;
+
+  const errorContainer = document.getElementById('errorListContainer');
+  if (importResults.errors.length > 0) {
+    errorContainer.classList.remove('hidden');
+    const errorList = document.getElementById('errorList');
+    errorList.innerHTML = importResults.errors.map(e => `
+      <div class="error-list-item">
+        <span class="error-row-num">Row ${e.row}</span>
+        <span class="error-message">
+          ${e.subject ? `<strong>${escapeHtml(e.subject)}</strong>: ` : ''}${escapeHtml(e.message)}
+        </span>
+      </div>
+    `).join('');
+  } else {
+    errorContainer.classList.add('hidden');
+  }
+}
+
+// ============================================================
+// Reset
+// ============================================================
+
+function resetApp() {
+  parsedCSV = null;
+  columnMapping = {};
+  importResults = { success: 0, errors: [] };
+  validatedMailbox = null;
+
+  // Reset file input
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileInfo').classList.add('hidden');
+  document.getElementById('dropZone').classList.remove('hidden');
+  document.getElementById('uploadNextBtn').disabled = true;
+  document.getElementById('csvError').classList.add('hidden');
+
+  // Reset mailbox
+  document.getElementById('mailboxInput').value = '';
+  document.getElementById('validationStatus').classList.add('hidden');
+  document.getElementById('mailboxNextBtn').disabled = true;
+
+  goToStep(2);
+}
+
+// ============================================================
+// Utilities
+// ============================================================
+
+function escapeHtml(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================================
+// Init
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', initMsal);
+</script>
+</body>
+</html>
